@@ -60,6 +60,7 @@ func (tr *Transformer) transformItem(rv reflect.Value) (reflect.Value, bool, map
 		// We update all positions to n.Pos() to aid comment placement.
 		rv = tr.subst(tr.env, reflect.ValueOf(tr.after),
 			reflect.ValueOf(e.Pos()))
+
 		changed = true
 		newEnv = tr.env
 	}
@@ -160,6 +161,7 @@ var (
 	scopePtrNil  = reflect.ValueOf((*ast.Scope)(nil))
 
 	identType        = reflect.TypeOf((*ast.Ident)(nil))
+	callExprType     = reflect.TypeOf((*ast.CallExpr)(nil))
 	selectorExprType = reflect.TypeOf((*ast.SelectorExpr)(nil))
 	objectPtrType    = reflect.TypeOf((*ast.Object)(nil))
 	statementType    = reflect.TypeOf((*ast.Stmt)(nil)).Elem()
@@ -271,10 +273,50 @@ func (tr *Transformer) subst(env map[string]ast.Expr, pattern, pos reflect.Value
 	}
 
 	// Wildcard gets replaced with map value.
-	if env != nil && pattern.Type() == identType {
-		id := pattern.Interface().(*ast.Ident)
-		if old, ok := env[id.Name]; ok {
-			return tr.subst(nil, reflect.ValueOf(old), reflect.Value{})
+	if env != nil {
+		switch pattern.Type() {
+		case callExprType:
+			// if a call expression has an ellipsis and its last argument is a wildcard identifier
+			// and its replacement in env is an *ast.CompositeLit (see *ast.CallExpr case in matchExpr)
+			// then we should unroll its elements.
+			//
+			// Example: renaming oldFunc to newFunc with same signature: func(arg1, args ...interface{})
+			// oldFunc(arg1, varArg1, varArg2) should become newFunc(arg1, varArg1, varArg2)
+			// Without the following logic, it would become newFunc(arg1, []interface{}{varArg1, varArg2}...) which is also correct but less idiomatic.
+			call := pattern.Interface().(*ast.CallExpr)
+			if call.Ellipsis.IsValid() {
+				n := len(call.Args) - 1
+				lastArg := call.Args[n]
+				if id, ok := lastArg.(*ast.Ident); ok {
+					if old, ok := env[id.Name]; ok {
+						if ellipsis, ok := tr.variadicArgs[id.Name]; ok {
+							newCall := &ast.CallExpr{
+								// TODO: tr.subst for call.Fun or for whole CallExpr (see return at end of block)
+								Fun: tr.subst(env, reflect.ValueOf(call.Fun), reflect.Value{}).Interface().(ast.Expr),
+								// copy non-variadic args
+								Args:     tr.subst(env, reflect.ValueOf(call.Args[:n]), reflect.Value{}).Interface().([]ast.Expr),
+								Ellipsis: ellipsis,
+							}
+							if complit, ok := old.(*ast.CompositeLit); ok {
+								// append copy of complit.Elts (variadic args)
+								// TODO: check complit.Type == *ast.ArrayType?
+								// TODO: is tr.subst() needed for complit.Elts ?
+								newCall.Args = append(newCall.Args, tr.subst(env, reflect.ValueOf(complit.Elts), reflect.Value{}).Interface().([]ast.Expr)...)
+							} else if ellipsis.IsValid() {
+								// TODO: is tr.subst() needed for old ?
+								newCall.Args = append(newCall.Args, tr.subst(env, reflect.ValueOf(old), reflect.Value{}).Interface().(ast.Expr))
+							}
+							// TODO: will this unnecessarily pass again through newCall.Args ?
+							return tr.subst(env, reflect.ValueOf(newCall), reflect.Value{})
+						}
+					}
+				}
+			}
+		case identType:
+			id := pattern.Interface().(*ast.Ident)
+			if old, ok := env[id.Name]; ok {
+				return tr.subst(nil, reflect.ValueOf(old), reflect.Value{})
+			}
 		}
 	}
 

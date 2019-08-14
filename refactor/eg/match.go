@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"go/parser"
 	"go/token"
 	"go/types"
 	"log"
@@ -110,9 +111,53 @@ func (tr *Transformer) matchExpr(x, y ast.Expr) bool {
 		if tr.info.Types[x.Fun].IsType() {
 			match = tr.matchType // type conversion
 		}
-		return x.Ellipsis.IsValid() == y.Ellipsis.IsValid() &&
-			match(x.Fun, y.Fun) &&
-			tr.matchExprs(x.Args, y.Args)
+		if !x.Ellipsis.IsValid() && y.Ellipsis.IsValid() {
+			return false // f(x) does not match variadic f(y...)
+		}
+		if !match(x.Fun, y.Fun) {
+			return false
+		}
+		n := len(x.Args)
+		var xobj *types.Var
+		var varArg ast.Expr
+		if x.Ellipsis.IsValid() {
+			// but variadic f(x...) does match both f(y) and f(y...)
+			n--
+			lastArg := x.Args[n]
+			lastType := tr.info.Types[lastArg].Type.(*types.Slice).Elem()
+			for _, arg := range y.Args[n:] {
+				if !types.AssignableTo(tr.info.Types[arg].Type, lastType) {
+					return false
+				}
+			}
+			// if the last argument is a wildcard then convert it to []lastType{yVarArg1, yVarArg2, ...}
+			// where yVarArgs are the variadic parameters of Y's call expression
+			var ok bool
+			xobj, ok = tr.wildcardObj(lastArg)
+			if ok {
+				// Ugly convenience to convert types to ASTs
+				lastTypeStr := fmt.Sprintf("%s", lastType)
+				lastTypeAST, err := parser.ParseExpr(lastTypeStr)
+				if err != nil {
+					panic(fmt.Sprintf("expected expression in %v: %v", lastTypeStr, err))
+				}
+				if y.Ellipsis.IsValid() {
+					varArg = y.Args[len(y.Args)-1] // keep last argument if also an ellipsis
+				} else if n < len(y.Args) {
+					varArg = &ast.CompositeLit{Type: &ast.ArrayType{Elt: lastTypeAST}, Elts: y.Args[n:]}
+				} else {
+					varArg = &ast.Ident{Name: "nil"}
+				}
+			}
+		}
+		if !tr.matchExprs(x.Args[:n], y.Args[:n]) {
+			return false
+		}
+		if xobj != nil {
+			tr.env[xobj.Name()] = varArg
+			tr.variadicArgs[xobj.Name()] = y.Ellipsis
+		}
+		return true
 
 	case *ast.StarExpr:
 		y := y.(*ast.StarExpr)

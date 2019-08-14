@@ -149,8 +149,9 @@ type Transformer struct {
 	allowWildcards bool
 
 	// Working state of Transform():
-	nsubsts    int            // number of substitutions made
-	currentPkg *types.Package // package of current call
+	nsubsts      int                  // number of substitutions made
+	currentPkg   *types.Package       // package of current call
+	variadicArgs map[string]token.Pos // last identifiers in a call expression mapped to their ellipsis
 }
 
 // NewTransformer returns a transformer based on the specified template,
@@ -244,6 +245,7 @@ func NewTransformer(fset *token.FileSet, tmplPkg *types.Package, tmplFile *ast.F
 		before:         before,
 		after:          after,
 		afterStmts:     afterStmts,
+		variadicArgs:   make(map[string]token.Pos),
 	}
 
 	// Combine type info from the template and input packages, and
