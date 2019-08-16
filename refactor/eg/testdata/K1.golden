@@ -1,0 +1,21 @@
+// +build ignore
+
+package K1
+
+func f(x int, y ...interface{})                  {}
+func g(a []interface{}, b int, c ...interface{}) {}
+
+func example() {
+	temp := 5
+	args := []interface{}{3, false, "abc"}
+	params := args
+
+	g(nil, temp)
+	g([]interface{}{42}, temp, 42)
+	g([]interface{}{1, temp + temp, 2}, temp, 1, temp+temp, 2)
+	g([]interface{}{func() { g(nil, 7) }}, temp, func() { g(nil, 7) })
+	g(nil, 0, args)
+	g(nil, 0, args...)
+	g([]interface{}{params}, temp, params)
+	g(params, temp, params...)
+}

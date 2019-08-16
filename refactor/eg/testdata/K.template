@@ -1,0 +1,14 @@
+// +build ignore
+
+package templates
+
+type fn func(x int, y ...interface{})
+
+func g(a []interface{}, b int, c ...interface{})
+
+func before(f fn, x int, y ...interface{}) {
+	f(x, y...)
+}
+func after(f fn, x int, y ...interface{}) {
+	g(y, x, y...)
+}
