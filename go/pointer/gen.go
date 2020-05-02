@@ -962,7 +962,9 @@ func (a *analysis) genInstr(cgn *cgnode, instr ssa.Instruction) {
 		// All no-ops.
 
 	case ssa.CallInstruction: // *ssa.Call, *ssa.Go, *ssa.Defer
-		a.genCall(cgn, instr)
+		if _, ok := instr.(*ssa.Go); !ok {
+			a.genCall(cgn, instr)
+		}
 
 	case *ssa.ChangeType:
 		a.copy(a.valueNode(instr), a.valueNode(instr.X), 1)

@@ -30,6 +30,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"strings"
 	"text/template"
 
 	"golang.org/x/tools/go/buildutil"
@@ -172,6 +173,7 @@ func doCallgraph(dir, gopath, algo, format string, tests bool, args []string) er
 
 	cfg := &packages.Config{
 		Mode:  packages.LoadAllSyntax,
+		BuildFlags: []string{"-tags", strings.Join(build.Default.BuildTags, " ")},
 		Tests: tests,
 		Dir:   dir,
 	}

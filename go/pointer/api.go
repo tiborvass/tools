@@ -42,6 +42,8 @@ type Config struct {
 	// If enabled, the graph will be available in Result.CallGraph.
 	BuildCallGraph bool
 
+	SkipGoInstructions bool
+
 	// The client populates Queries[v] or IndirectQueries[v]
 	// for each ssa.Value v of interest, to request that the
 	// points-to sets pts(v) or pts(*v) be computed.  If the
